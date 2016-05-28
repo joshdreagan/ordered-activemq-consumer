@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+       xmlns:camel="http://camel.apache.org/schema/spring"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans.xsd
+                           http://camel.apache.org/schema/spring http://camel.apache.org/schema/spring/camel-spring.xsd">
+  
+  <!--
+  <bean id="memoryAggregationRepository" class="org.apache.camel.processor.aggregate.MemoryAggregationRepository"/>
+  
+  <bean id="jdbcAggregationRepository" class="org.apache.camel.processor.aggregate.jdbc.JdbcAggregationRepository">
+    <constructor-arg name="repositoryName" value="resequencer_repo"/>
+    <constructor-arg name="transactionManager" ref="txManager"/>
+    <constructor-arg name="dataSource" ref="dataSource"/>
+  </bean>
+  -->
+  
+  <bean id="optimisticLockingJdbcAggregationRepository" class="org.apache.camel.processor.aggregate.jdbc.OptimisticLockingJdbcAggregationRepository">
+    <constructor-arg name="repositoryName" value="resequencer_repo"/>
+    <constructor-arg name="transactionManager" ref="txManager"/>
+    <constructor-arg name="dataSource" ref="dataSource"/>
+  </bean>
+  
+  <bean id="txManager" class="org.springframework.jdbc.datasource.DataSourceTransactionManager">
+    <property name="dataSource" ref="dataSource"/>
+  </bean>
+
+  <bean id="activemq" class="org.apache.activemq.camel.component.ActiveMQComponent">
+    <property name="brokerURL" value="vm://localhost?create=false"/>
+  </bean>
+  
+  <bean id="arrayListAggregationStrategy" class="org.jboss.examples.camel.ArrayListAggregationStrategy"/>
+  
+  <camelContext xmlns="http://camel.apache.org/schema/spring">
+    
+    <!--
+     NOTE: You should include a completionTimeout option if testing with the other repository types.
+    -->
+    <route id="resequencerRoute">
+      <from uri="activemq:queue:org.jboss.examples.UnorderedMessages?acknowledgementModeName=CLIENT_ACKNOWLEDGE"/>
+      <aggregate completionSize="10"
+                 strategyRef="arrayListAggregationStrategy" 
+                 aggregationRepositoryRef="optimisticLockingJdbcAggregationRepository">
+        <correlationExpression>
+          <simple>header.MyGroupingID</simple>
+        </correlationExpression>
+        <split streaming="false" parallelProcessing="false">
+          <simple>body</simple>
+          <resequence>
+            <simple>body</simple>
+            <log id="processMessage" message="Processed message #${body}."/>
+          </resequence>
+        </split>
+      </aggregate>
+    </route>
+    
+  </camelContext>
+
+</beans>
